@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pandas
+numpy
+yfinance
+pytickersymbols
+#scipy
+pydantic-settings
+deta==1.2.0
