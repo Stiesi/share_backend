@@ -2,8 +2,13 @@
 v: 0
 micros:
   - name: shares_backend
-    src: ./src
+    src: ./
     engine: python3.9
     primary: true
-    run: uvicorn main:app
-    dev: ./venv/bin/uvicorn main:app
+    run: uvicorn main:app --reload
+    dev: ./venv/bin/uvicorn main:app --reload
+    #presets:
+    #  api_keys: true
+    #include:      
+    #  - src/
+    #  - ./

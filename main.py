@@ -10,7 +10,10 @@ import settings as _settings
 
 from deta import Deta
 
-deta_key = os.environ.get('eurex_base',_settings.settings.eurex_base)
+try:
+    deta_key = os.environ.get('eurex_base',_settings.settings.eurex_base)
+except:
+    print('set Environment variable >>> eurex_base <<< to access key for Deutsche Boerse API')  
 
 # Connect to Deta Base with your Data Key
 deta = Deta(deta_key)
@@ -181,6 +184,12 @@ async def get_eurex_symbols():
     keys = [item['key'] for item in data.items]                    
     return keys
 
+
+@app.get("/get_env",tags=['database'],description='get environment variable ')
+async def get_env():
+    # all dat, that have a yearpoint defined
+    envs = [data for data in os.environ.items()]    
+    return envs
 
 # key rent data. (yearly and yearpoint, kurs und margin (?)) in second db? avoid rewrite of too many data
 

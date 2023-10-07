@@ -28,6 +28,7 @@ try:
 except:
   print('set Environment variable >>> eurex_margins <<< to access key for Deutsche Boerse API')  
 
+
 api_header = {"X-DBP-APIKEY": eurex_key}
 
 effective_date = datetime.date.today() 
