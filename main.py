@@ -123,6 +123,39 @@ async def get_last_price(symbol: str='DTE'):
     history = optex.get_history(_yahoo,period='5d')#optex.get_yahoo_symb(symbol))
     last_price = history.iloc[-1]
     return {'date':last_price.dates,'Close':last_price.Close}
+#
+#
+###### under construction ################
+
+@app.get("/create_eurex_yearpoint",tags=['database','margins'])
+#async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
+async def create_symbol_yearpoint(symbol: str):
+    option_set = await get_optionset(symbol)
+    #eurex_data = await get_symbol(symbol)
+    df = get_margins(option_set)
+    last_price_date = await get_last_price(symbol)
+    last_price = last_price_date['Close']
+    # dict with maturity : (call margin %, put margin %)
+    df['rel_strike']= df.exercise_price/last_price
+    df['rel_margin']= df.premium_margin/(last_price*100) # contract size 100
+    df['deviation'] = abs(df['rel_strike']-1.)
+    #market_prices = optex.get_margins_atmarketprice(df,last_price) 
+    year_point = optex.get_yearpoint(df,last_price) 
+    #mat_dates = market_prices.keys()
+    return  {'maturity_date':int(year_point[0]),
+             'reference_price': float(last_price),
+             'call_yp':float(year_point[1]),
+             'put_yp':float(year_point[2])}
+
+
+def get_margins(option_set):
+    resp =optex.get_portfolio_margins(option_set)
+    df = optex.df_from_portfolio(resp)
+    return df
+
+@app.get("/get_eurex_margins",tags=['database','margins'])
+async def get_optionset(symbol: str):
+    return optex.get_options(symbol)
 
 
 # key rent data. (yearly and yearpoint, kurs und margin (?)) in second db? avoid rewrite of too many data

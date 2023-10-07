@@ -4,6 +4,7 @@ get all products from EUREX
 import requests 
 import json 
 import datetime
+from dateutil.relativedelta import relativedelta
 import os
 import pandas as pd
 import yfinance as yf
@@ -29,16 +30,19 @@ except:
 
 api_header = {"X-DBP-APIKEY": eurex_key}
 
-effective_date = datetime.date.today() + datetime.timedelta(days=2)
+effective_date = datetime.date.today() 
 #maturity_date = effective_date.replace(year=effective_date.year+1)
 
 def format_datetime(dt):
   return dt.strftime('%Y-%m-%d')
 
 def today_nextyear(year=1,month=0):
+  # return date close to maturity next year +
   # get today + 1 year + month  at int in yyyymm
   #maturity_date
-  maturity_date = effective_date.replace(year=effective_date.year+year,month=effective_date.month+month)
+  # not stable:
+  #maturity_date = effective_date.replace(year=effective_date.year+year,month=effective_date.month+month)
+  maturity_date = effective_date + relativedelta(months=13,days=15)
   ny_int = int(maturity_date.strftime('%Y%m'))
   return ny_int
 
