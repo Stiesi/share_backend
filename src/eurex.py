@@ -112,14 +112,14 @@ def share_repo(my_iterator):
 
 def markets():
   stock_data = PyTickerSymbols()
-  countries = stock_data.get_all_countries()
+  #countries = stock_data.get_all_countries()
   indices = stock_data.get_all_indices()
-  industries = stock_data.get_all_industries()
+  #industries = stock_data.get_all_industries()
 
-  ixlist =['DAX','MDAX','AEX','CAC 40','FTSE 100','IBEX 35','BEL 20','SDAX']#,'NASDAQ 100','DOW JONES']
+  #ixlist =['DAX','MDAX','AEX','CAC 40','FTSE 100','IBEX 35','BEL 20','SDAX']#,'NASDAQ 100','DOW JONES']
   repo = {}
   
-  for market in ixlist:
+  for market in indices:
     stocks = stock_data.get_stocks_by_index(market)
     stocklist = [stock for stock in stocks]
     repo[market] = share_repo(stocklist) 
@@ -152,26 +152,36 @@ def create_repos(from_backup=False):
   if from_backup:
     return load_repos()
   
+  eurex = [pisin for pname,px,pisin in get_eurex_products_list()] # list of eurex isin
   repo = markets()
-  symbols={'reverseid':{}}
+  #symbols={'reverseid':{}}
+  symbols={}
   for market,stock_repo in repo.items():
-    
+    print(market)
     for share,stock_data in stock_repo.items():
       try:
-        resp = requests.get(url_base + "securities",
-                    params = {'isin':stock_data['isin']}, # isin connection of Eurex and Pyticker
-                    headers = api_header).json()
-        eurex_data = resp['securities']
-        if eurex_data[0]: # not empty            
-            veurex = {k:v for k,v in (eurex_data[0]).items()} # eurex data
-            veurex['_id']=share  # connection to repo index
-            veurex.update(stock_data)
-            #stock_data.update(veurex) # add all entries from eurex
-            symbols[veurex['sec_id']] = veurex  # make symbol key for 
-            symbols['reverseid'][share]=veurex['sec_id']
-
+        myisin = stock_data.get('isin','xx')
+        if myisin in eurex:          
+          resp = requests.get(url_base + "securities",
+                      params = {'isin':stock_data['isin']}, # isin connection of Eurex and Pyticker
+                      headers = api_header).json()
+          eurex_data = resp['securities']
+          if eurex_data[0]: # not empty  
+              symbol = eurex_data[0]['sec_id']
+              if symbol: # not empty too
+                if symbol in symbols.keys(): # already exists
+                  symbols[symbol]['indices'].append(market)
+                else:  # create new entry
+                  veurex = {k:v for k,v in (eurex_data[0]).items()} # eurex data
+                  veurex['_id']=share  # connection to repo index
+                  veurex.update(stock_data)
+                  veurex['indices']=[market] # initialize indices
+                  #stock_data.update(veurex) # add all entries from eurex
+                  symbols[symbol] = veurex  # make symbol key for 
+                  #symbols['reverseid'][share]=symbol
       except:
-          print(f'Share {share} not available')    
+            print(f'  Share {share} not available')    
+
 
   with open('EUREX_DB.json','w') as fp:
     json.dump(symbols,fp)
@@ -292,7 +302,7 @@ def get_eurex_products(SYMBOLS):
 
 def get_current_rent(symbol):
     ticker = get_ticker(symbol) # doubles ticker call, but how to avoid?
-    todays_data = get_history(symbol) # also calls ticker, returns pd.DataFrame
+    todays_data = get_history(symbol,period='5d') # also calls ticker, returns pd.DataFrame
     #print(todays_data.keys())
     dividends = ticker.dividends
     ydiv = pd.DataFrame(dividends)

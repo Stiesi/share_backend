@@ -20,6 +20,10 @@ deta = Deta(deta_key)
 
 db = deta.Base("eurex_base")
 
+db_prices = deta.Base("share_prices")
+
+db_watchlist = deta.Base("watchlist_share")
+
 app = FastAPI()
 
 
@@ -29,35 +33,36 @@ async def root():
     return {"message": "Welcome to share evaluation, for API go to /docs"}
 
 @app.get("/feed",tags=['database'],description='Initialize or update Database with Symbols and its members')
-async def feed_base():
+async def feed_base(fromfile: bool=True):
 # create database in deta
 # GLOBAL Data
-    SYMBOLS = optex.create_repos()  # repo by name, symbols is dict symbol -> name
+    SYMBOLS = optex.create_repos(from_backup=fromfile)  # repo by name, symbols is dict symbol -> name
     # loop over name and create/update database
-    for sym in SYMBOLS:
-        print(sym)
-        #db.put(sym)
+    [db.put(entries,key=sym) for sym,entries in SYMBOLS.items() if sym != 'reverseid']
+    #db.put(SYMBOLS[sym],key=sym)
     return SYMBOLS
-
-@app.get("/feed_from_file",tags=['database'],description='update Database from file, if exists (faster)')
-async def feed_from_file():
-# create database in deta from json file (faster, but maybe outdated)
-# GLOBAL Data
-    SYMBOLS=optex.load_repos()
-    return SYMBOLS
-    # loop over name and create/update database
+### obsolete due to from_backup
+#@app.get("/feed_from_file",tags=['database'],description='update Database from file, if exists (faster)')
+#async def feed_from_file():
+## create database in deta from json file (faster, but maybe outdated)
+## GLOBAL Data
+#    SYMBOLS=optex.load_repos()
+#    [db.put(entries,key=sym) for sym,entries in SYMBOLS.items() if sym != 'reverseid']
+#    return SYMBOLS
+#    # loop over name and create/update database
 
 @app.get("/get_allsymbols",tags=['database'],description='return all keys for database')
 #async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
 async def get_allsymbols():
     keysall = []
-    for contry in ['DE','FR','NL','GB','IT','BE','CH','ES','IE','LU','FI']:
-        data = db.fetch({"underlying_isin?pfx":contry}) # fetch prefix contry
-        keysall.extend ([it['key'] for it in data.items]) # add items' key to global list keysall
+    #for contry in ['DE','FR','NL','GB','IT','BE','CH','ES','IE','LU','FI']:
+    #data = db.fetch({"underlying_isin?pfx":contry}) # fetch prefix contry
+    data = db.fetch().items # fetch prefix contry
+    keysall.extend ([it['key'] for it in data]) # add items' key to global list keysall
         
     return keysall
 
-@app.put("/update_allsymbols",tags=['database'], description='Update all database with lastprices, rent and yearpoint')
+@app.put("/update_allsymbols",tags=['prices'], description='Update all database with lastprices, rent and yearpoint')
 #update prices and rents on all symbols
 async def update_allsymbols():
     keysall = await get_allsymbols()
@@ -70,17 +75,70 @@ async def update_allsymbols():
 
 
 
+@app.delete("/db_delete",tags=['database'],description='Detlete entry Symbol')
+async def delete_entry(symbol: str):
+# create database in deta
+# GLOBAL Data
+    check = db.delete(symbol)
+    return check
+    #if check:
+    #    return {'message':f'{symbol.upper()} deleted'}
+    #else:
+    #    return {'error':f'{symbol.upper()} NOT deleted'}
+
+
+@app.delete("/db_delete_all",tags=['database'],description='Delete all Symbol entries')
+async def delete_entry_all():
+# delete entries in database in deta
+# GLOBAL Data
+    #keysall = await get_allsymbols()
+    all = db.fetch().items
+    
+    ret = [await delete_entry(entry['key']) for entry in all]
+    return {'message':ret}
+
+
+@app.get("/get_symbol_price",tags=['prices'],description='return price entries for symbol')
+#async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
+async def get_symbol_price(symbol: str='DTE'):
+    data = db_prices.get(symbol.upper())
+    return data
+
+
 
 @app.get("/get_symbol",tags=['database'],description='return database entries for symbol')
 #async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
 async def get_symbol(symbol: str='DTE'):
-    data = db.get(symbol)
+    data = db.get(symbol.upper())
     return data
 
-@app.put("/update_symbol",tags=['database'],description='get existing data from key, if exist update price, rent and yearpoint')
+@app.put("/update_symbol_price",tags=['prices'],description='get existing data from key, if exist update price, rent and yearpoint')
 #async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
 # add info on date, rentabs, rentrel, yearpoint
 async def update_symbol(symbol: str='DTE'):
+    symbol = symbol.upper()
+    data = db.get(symbol)
+    if data:
+        _yahoo = data['yahoo']
+        #history = optex.get_history(_yahoo,period='5d')
+        #future  = optex.create_future(history)
+        
+        share_name,lastdate,lastprice,rent = optex.get_current_rent(_yahoo)
+        #lastdate = history.dates.max()  
+        #lastprice = history.loc[history.dates==lastdate].Close.values[0]
+        ret = rent/lastprice
+        pdata = dict(lastdate=lastdate,lastprice=lastprice,rent_abs=rent,rent_rel = ret)
+        yearpoint = await get_symbol_yearpoint(symbol)
+        pdata.update(yearpoint)
+        myreturn = db_prices.put(pdata,key=symbol)
+        return myreturn
+    else:
+        return {'error': f'key {symbol} not found'}
+
+@app.put("/update_symbol_bak",tags=['database'],description='get existing data from key, if exist update price, rent and yearpoint')
+#async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
+# add info on date, rentabs, rentrel, yearpoint
+async def update_symbol_bak(symbol: str='DTE'):
     data = db.get(symbol)
     if data:
         _yahoo = data['yahoo']
@@ -101,7 +159,6 @@ async def update_symbol(symbol: str='DTE'):
         return myreturn
     else:
         return {'error': f'key {symbol} not found'}
-
 
 
 @app.get("/get_symbol_yahoo",tags=['database'],description='get yahoo key for symbol')
@@ -177,19 +234,44 @@ async def get_symbol_margins(symbol: str):
     return df.to_dict(orient='tight')
 
 
-@app.get("/get_eurex_symbols",tags=['database','margins'],description='get all options symbols available at EUREX')
+@app.get("/get_eurex_symbols",tags=['prices','margins'],description='get all options symbols available at EUREX')
 async def get_eurex_symbols():
     # all dat, that have a yearpoint defined
-    data = db.fetch({"call_yp?gte": 0})
+    data = db_prices.fetch({"call_yp?gte": 0})
     keys = [item['key'] for item in data.items]                    
     return keys
 
-
+#### for debugging
 @app.get("/get_env",tags=['database'],description='get environment variable ')
 async def get_env():
     # all dat, that have a yearpoint defined
     envs = [data for data in os.environ.items()]    
     return envs
+
+
+@app.get("/get_watchlists",tags=['watchlist'],description='get all watchlists ')
+async def get_watchlists():
+    # all dat, that have a yearpoint defined
+    wll = db_watchlist.fetch().items
+    return wll
+
+# create lists from indexes
+@app.get("/create_watchlist_base",tags=['watchlist'],description='create/update index watchlists')
+async def create_base_watchlists():
+    # dictionary from all index members in indices field
+    ix_dict={}
+    symbols = db.fetch().items
+    for sym in symbols:
+        for ix in sym['indices']:
+            try: # append to entry ix
+                ix_dict[ix].append(sym['key'])
+            except: # create list with new entry
+                ix_dict[ix]=[sym['key']]
+    # write all ix members to watchlist entries for index names
+    for key,members in ix_dict.items():
+        check = db_watchlist.put(dict(symbols=members,name=key,key=key))
+    indices = list(ix_dict.keys())
+    return {'message':'Indices updates','indices':indices}
 
 # key rent data. (yearly and yearpoint, kurs und margin (?)) in second db? avoid rewrite of too many data
 
