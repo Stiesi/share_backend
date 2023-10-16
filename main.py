@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from pydantic import BaseModel,Field
 
-from pytickersymbols import PyTickerSymbols
+#from pytickersymbols import PyTickerSymbols
+import datetime
+
 
 import os
 
@@ -135,30 +137,6 @@ async def update_symbol(symbol: str='DTE'):
     else:
         return {'error': f'key {symbol} not found'}
 
-@app.put("/update_symbol_bak",tags=['database'],description='get existing data from key, if exist update price, rent and yearpoint')
-#async def get_symbol(symbol: str = Field(default='DTE',description='Symbol for Option',min_length=3,max_length=4)): # creates an error . wait for new version
-# add info on date, rentabs, rentrel, yearpoint
-async def update_symbol_bak(symbol: str='DTE'):
-    data = db.get(symbol)
-    if data:
-        _yahoo = data['yahoo']
-        #history = optex.get_history(_yahoo,period='5d')
-        #future  = optex.create_future(history)
-        
-        share_name,lastdate,lastprice,rent = optex.get_current_rent(_yahoo)
-        #lastdate = history.dates.max()  
-        #lastprice = history.loc[history.dates==lastdate].Close.values[0]
-        ret = rent/lastprice *100
-        data['lastdate']=lastdate
-        data['lastprice']=lastprice
-        data['rent_abs'] = rent
-        data['rent_rel'] = ret
-        yearpoint = await get_symbol_yearpoint(symbol)
-        data.update(yearpoint)
-        myreturn = db.put(data,key=symbol)
-        return myreturn
-    else:
-        return {'error': f'key {symbol} not found'}
 
 
 @app.get("/get_symbol_yahoo",tags=['database'],description='get yahoo key for symbol')
@@ -272,6 +250,38 @@ async def create_base_watchlists():
         check = db_watchlist.put(dict(symbols=members,name=key,key=key))
     indices = list(ix_dict.keys())
     return {'message':'Indices updates','indices':indices}
+
+
+# event handling
+
+
+@app.post("/__space/v0/actions",tags=['schedule'],description='update prices from scheduled action')
+async def events(event: dict):
+#{
+#  "event": {
+#    "id": "cleanup",
+#    "trigger": "schedule"
+#  }
+#}    
+    # update all prices
+    if event['event']['id']=='update_prices':
+        ret = await update_prices()
+    return ret
+
+
+
+
+@app.post("/update_prices",tags=['prices','schedule'],description='update prices from scheduled action')
+async def update_prices():
+    today = datetime.datetime.today().replace(hour=0,minute=0,second=0,microsecond=0)
+
+    data = db_prices.fetch().items
+    for entry in data:
+        lastdate = entry['lastdate']
+        if today > datetime.datetime.strptime(lastdate,'%d.%m.%Y'):
+            out = await update_symbol(entry['key'])
+            #print(out)
+    return {'message':'update done'}
 
 # key rent data. (yearly and yearpoint, kurs und margin (?)) in second db? avoid rewrite of too many data
 

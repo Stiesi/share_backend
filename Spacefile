@@ -7,6 +7,12 @@ micros:
     primary: true
     run: uvicorn main:app --reload
     dev: ./venv/bin/uvicorn main:app --reload
+    actions:
+      - id: "update_prices"
+        name: "UpdatePrices"
+        description: "updates prices from yahoo and eurex for new yearpoints and rents"
+        trigger: "schedule"
+        default_interval: "*/5 * * * 1-5"
     #presets:
     #  api_keys: true
     #include:      
